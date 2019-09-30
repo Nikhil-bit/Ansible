@@ -1,0 +1,171 @@
+---
+- hosts: 192.168.1.58
+  become: true
+  become_user: root
+  gather_facts: true
+  vars:
+    password: $6$LWyktJ156OjeY0md$PLLqAEG1FpmBbEa91Uw73goY73rw03AvBtsVyLFzd12AMca1JjTnK3YPJD6TuM4nQamuN6k8QZvraLpR6oGsg/
+  tasks:
+     
+        - name: Create groups
+          group:
+             name: oinstall
+             state: present
+         
+         
+        - name: Create user
+          user:
+             name=oracle
+             groups=oinstall
+             password={{ password }}
+         
+         
+          
+        - name: Copy weblogic file to the remote client
+          copy:
+             src: /root/weblogic/fmw_12.2.1.3.0_wls_Disk1_1of1.zip
+             dest: /home/oracle
+             
+         
+        - name: Copy jdk file to the remote client
+          copy:
+             src: /root/weblogic/jdk-8u221-linux-x64.tar.gz
+             dest: /home/oracle
+             
+             
+             
+        - name: install unzip package
+          yum:
+             name: unzip
+             state: present  
+             
+        - name: Unzip weblogic 
+          unarchive:
+            src: /home/oracle/fmw_12.2.1.3.0_wls_Disk1_1of1.zip
+            dest: /home/oracle
+            remote_src: yes        
+
+
+              
+              
+        - name: Unzip jdk
+          unarchive:
+             src: /home/oracle/jdk-8u221-linux-x64.tar.gz
+             dest: /home/oracle
+             remote_src: yes
+         
+         
+         
+        - name: Export JAVA HOME path
+          shell: echo "export JAVA_HOME=/home/oracle/jdk1.8.0_221" >> /root/.bash_profile   
+         
+         
+        - name: Export  path
+          shell: echo "export PATH=/home/oracle/jdk1.8.0_221/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/home/oracle/bin:/home/oracle/.local/bin" >> /root/.bash_profile
+
+        - name: Source file
+          shell: source /root/.bash_profile
+         
+        - name: Export JAVA HOME path
+          shell: echo "export JAVA_HOME=/home/oracle/jdk1.8.0_221" >> /home/oracle/.bash_profile 
+         
+        - name: Export  path
+          shell: echo "export PATH=/home/oracle/jdk1.8.0_221/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/home/oracle/bin:/home/oracle/.local/bin" >> /home/oracle/.bash_profile
+
+         
+        - name: Source file
+          shell: source /home/oracle/.bash_profile
+
+        - name: Creates directory
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:                                         
+            - '/u01/app/oraInventory'                     
+            - '/u01/app/oracle/product/12.2.1'          
+            - '/u01/app/oracle/config/{domains,applications}'
+            
+                  
+      
+        - name: Changing owner of oraInventory
+          shell: chown -R oracle:oinstall /u01/app/oraInventory
+
+        - name: changing owner of u01
+          shell: chmod -R 775 /u01 
+
+        - name: Changing owner of oraInventory
+          shell: chown -R oracle:oinstall /u01/app/oracle/product/12.2.1 
+
+        - name: Changing owner of oraInventory
+          shell: chown -R oracle:oinstall /u01/app/oracle/product        
+
+        - name: set environment variable for oracle user
+          blockinfile:
+            dest: /home/oracle/.bash_profile
+            block: |
+              export ORACLE_BASE=/u01/app/oracle
+              export ORACLE_HOME=$ORACLE_BASE/product/12.2.1
+              export MW_HOME=$ORACLE_HOME
+              export WLS_HOME=$MW_HOME/wlserver
+              export DOMAIN_BASE=$ORACLE_BASE/config/domains
+              export DOMAIN_HOME=$DOMAIN_BASE/mydomain
+         
+        - name: set environment variable for root user
+          blockinfile:
+            dest: /root/.bash_profile
+            block: |
+              export ORACLE_BASE=/u01/app/oracle
+              export ORACLE_HOME=$ORACLE_BASE/product/12.2.1
+              export MW_HOME=$ORACLE_HOME
+              export WLS_HOME=$MW_HOME/wlserver
+              export DOMAIN_BASE=$ORACLE_BASE/config/domains
+              export DOMAIN_HOME=$DOMAIN_BASE/mydomain           
+   
+        - name: creating Inventory file
+          file:
+            path: /etc/oraInst.loc
+            state: touch
+        
+        - name: Inserting block files in oraInst   
+          blockinfile:
+            dest: /etc/oraInst.loc
+            block: |
+              inventory_loc=/u01/app/oraInventory
+              inst_group=oinstall
+        
+                
+        - name: creating Inventory file
+          file:
+            path: /home/oracle/response_file.rsp
+            state: touch
+           
+        - name: Inserting block files in response_file
+          blockinfile:
+             dest: /home/oracle/response_file.rsp
+             block: | 
+               [ENGINE]
+               Response File Version=1.0.0.0.0
+               [GENERIC]
+               ORACLE_HOME=/u01/app/oracle/product/12.2.1
+               INSTALL_TYPE=WebLogic Server
+               MYORACLESUPPORT_USERNAME=
+               MYORACLESUPPORT_PASSWORD=<SECURE VALUE>
+               DECLINE_SECURITY_UPDATES=true
+               SECURITY_UPDATES_VIA_MYORACLESUPPORT=false
+               PROXY_HOST=
+               PROXY_PORT=
+               PROXY_USER=
+               PROXY_PWD=<SECURE VALUE>
+               COLLECTOR_SUPPORTHUB_URL=
+               
+               
+        - name: run weblogic silent installation
+          become: yes
+          become_user: oracle
+          shell: /home/oracle/jdk1.8.0_221/bin/java -jar /home/oracle/fmw_12.2.1.3.0_wls.jar -silent -responseFile /home/oracle/response_file.rsp -invPtrLoc /etc/oraInst.loc
+               
+               
+        - name: Installing x11
+          yum: 
+             name: x11*
+             state: present  
